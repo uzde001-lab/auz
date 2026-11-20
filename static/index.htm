@@ -11,13 +11,16 @@
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;justify-content:center}
 main{width:100%;max-width:760px;height:100%;display:flex;flex-direction:column;background:var(--panel);border-inline:1px solid var(--line)}
-header{display:flex;justify-content:space-between;align-items:baseline;padding:14px 18px;border-bottom:1px solid var(--line)}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 18px;border-bottom:1px solid var(--line)}
 h1{font-size:20px;margin:0;font-weight:700}
-header button{background:none;border:0;color:var(--mute);cursor:pointer;font:inherit;font-size:14px}
+.tools{display:flex;gap:10px;align-items:center}
+select{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:5px 8px;font:inherit;font-size:14px}
+#clear{background:none;border:0;color:var(--mute);cursor:pointer;font:inherit;font-size:14px}
 #log{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:14px}
 .msg{max-width:88%;padding:10px 14px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere}
 .me{align-self:flex-end;background:var(--me);color:var(--me-ink);border-bottom-right-radius:4px}
 .bot{align-self:flex-start;background:var(--bot);border-bottom-left-radius:4px}
+.tag{align-self:flex-start;color:var(--mute);font-size:13px;margin-top:-8px}
 .err{color:#c0392b}
 form{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line)}
 textarea{flex:1;resize:none;max-height:140px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink);font:inherit;outline:none}
@@ -30,7 +33,10 @@ textarea:focus{border-color:var(--me)}
 <main>
   <header>
     <h1>cheksiz.AI</h1>
-    <button id="clear" type="button">Tozalash</button>
+    <div class="tools">
+      <select id="provider"><option value="auto">Avto</option></select>
+      <button id="clear" type="button">Tozalash</button>
+    </div>
   </header>
   <div id="log"></div>
   <form id="form">
@@ -45,6 +51,7 @@ textarea:focus{border-color:var(--me)}
   var form = document.getElementById("form");
   var input = document.getElementById("input");
   var sendBtn = document.getElementById("send");
+  var sel = document.getElementById("provider");
   var history = [];
   var busy = false;
 
@@ -56,39 +63,35 @@ textarea:focus{border-color:var(--me)}
     log.scrollTop = log.scrollHeight;
     return d;
   }
-
-  function greet(){
-    add("Salom! Men cheksiz.AI. Qanday yordam bera olaman?", "bot");
-  }
+  function greet(){ add("Salom! Men cheksiz.AI. Qanday yordam bera olaman?", "bot"); }
   greet();
 
+  fetch("/providers").then(function(r){return r.json();}).then(function(list){
+    list.forEach(function(p){
+      var o = document.createElement("option");
+      o.value = p.id; o.textContent = p.label;
+      sel.appendChild(o);
+    });
+  }).catch(function(){});
+
   document.getElementById("clear").onclick = function(){
-    history = [];
-    log.innerHTML = "";
-    greet();
+    history = []; log.innerHTML = ""; greet();
   };
 
   input.addEventListener("input", function(){
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 140) + "px";
   });
-
   input.addEventListener("keydown", function(e){
-    if(e.key === "Enter" && !e.shiftKey){
-      e.preventDefault();
-      form.requestSubmit();
-    }
+    if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); form.requestSubmit(); }
   });
 
   form.addEventListener("submit", async function(e){
     e.preventDefault();
     var text = input.value.trim();
     if(!text || busy) return;
-
-    busy = true;
-    sendBtn.disabled = true;
-    input.value = "";
-    input.style.height = "auto";
+    busy = true; sendBtn.disabled = true;
+    input.value = ""; input.style.height = "auto";
 
     add(text, "me");
     history.push({role:"user", content:text});
@@ -98,20 +101,21 @@ textarea:focus{border-color:var(--me)}
       var r = await fetch("/chat", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({messages: history})
+        body: JSON.stringify({messages: history, provider: sel.value})
       });
       var data = await r.json();
       if(!r.ok || data.error) throw new Error(data.error || "Xatolik");
       wait.textContent = data.reply;
       history.push({role:"assistant", content:data.reply});
+      var t = document.createElement("div");
+      t.className = "tag"; t.textContent = data.provider;
+      log.appendChild(t);
     }catch(err){
       wait.textContent = "Xato: " + err.message;
       wait.classList.add("err");
       history.pop();
     }
-
-    busy = false;
-    sendBtn.disabled = false;
+    busy = false; sendBtn.disabled = false;
     log.scrollTop = log.scrollHeight;
     input.focus();
   });
